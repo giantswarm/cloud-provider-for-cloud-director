@@ -25,9 +25,9 @@ build-within-docker:
 	go build -ldflags "-X github.com/vmware/cloud-provider-for-cloud-director/version.Version=$(version)" -o /build/vcloud/cloud-provider-for-cloud-director cmd/ccm/main.go
 
 ccm: $(GO_CODE)
-	docker build -f Dockerfile . -t cloud-provider-for-cloud-director:$(version)
-	docker tag cloud-provider-for-cloud-director:$(version) $(REGISTRY)/cloud-provider-for-cloud-director:$(version)-$(GITCOMMIT)
-	docker push $(REGISTRY)/cloud-provider-for-cloud-director:$(version)-$(GITCOMMIT)
+	docker build -f Dockerfile . -t cpi-cloud-director:$(version)
+	docker tag cpi-cloud-director:$(version) $(REGISTRY)/cpi-cloud-director:$(version)-$(GITCOMMIT)
+	docker push $(REGISTRY)/cpi-cloud-director:$(version)-$(GITCOMMIT)
 
 prod: ccm prod-manifest crs-artifacts-prod
 
