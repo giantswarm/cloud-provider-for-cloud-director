@@ -17,6 +17,7 @@ jobs:
             echo "$QUAY_PASSWORD" | docker login quay.io --username $QUAY_USERNAME --password-stdin
             
             export REGISTRY=quay.io/giantswarm
+            make build
             make ccm
 
 workflows:

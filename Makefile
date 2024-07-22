@@ -29,7 +29,7 @@ build-within-docker:
 	go build -ldflags "-X github.com/vmware/cloud-provider-for-cloud-director/version.Version=$(VERSION)" -o /build/vcloud/cloud-provider-for-cloud-director cmd/ccm/main.go
 
 ccm: $(GO_CODE)
-	docker build -f Dockerfile . -t cloud-provider-for-cloud-director:$(VERSION)
+	docker build --platform $(PLATFORM) -f Dockerfile . -t cloud-provider-for-cloud-director:$(VERSION) --build-arg CPI_BUILD_DIR=bin
 	docker tag cloud-provider-for-cloud-director:$(VERSION) $(REGISTRY)/cloud-provider-for-cloud-director:$(VERSION)-$(GITCOMMIT)
 	docker push $(REGISTRY)/cloud-provider-for-cloud-director:$(VERSION)-$(GITCOMMIT)
 

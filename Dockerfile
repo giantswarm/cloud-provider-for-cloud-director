@@ -8,7 +8,7 @@ ADD ${CPI_BUILD_DIR}/cloud-provider-for-cloud-director .
 RUN chmod +x /build/vcloud/cloud-provider-for-cloud-director
 ########################################################
 
-FROM photon:4.0
+FROM scratch
 
 WORKDIR /opt/vcloud/bin
 
