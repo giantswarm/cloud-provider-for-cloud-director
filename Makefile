@@ -26,12 +26,12 @@ CGO ?= 0
 build-within-docker:
 	mkdir -p /build/cloud-provider-for-cloud-director
 	go mod vendor
-	go build -ldflags "-X github.com/vmware/cloud-provider-for-cloud-director/version.Version=$(version)" -o /build/vcloud/cloud-provider-for-cloud-director cmd/ccm/main.go
+	go build -ldflags "-X github.com/vmware/cloud-provider-for-cloud-director/version.Version=$(VERSION)" -o /build/vcloud/cloud-provider-for-cloud-director cmd/ccm/main.go
 
 ccm: $(GO_CODE)
-	docker build -f Dockerfile . -t cloud-provider-for-cloud-director:$(version)
-	docker tag cloud-provider-for-cloud-director:$(version) $(REGISTRY)/cloud-provider-for-cloud-director:$(version)-$(GITCOMMIT)
-	docker push $(REGISTRY)/cloud-provider-for-cloud-director:$(version)-$(GITCOMMIT)
+	docker build -f Dockerfile . -t cloud-provider-for-cloud-director:$(VERSION)
+	docker tag cloud-provider-for-cloud-director:$(VERSION) $(REGISTRY)/cloud-provider-for-cloud-director:$(VERSION)-$(GITCOMMIT)
+	docker push $(REGISTRY)/cloud-provider-for-cloud-director:$(VERSION)-$(GITCOMMIT)
 
 .PHONY: all
 all: vendor lint dev
