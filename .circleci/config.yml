@@ -12,13 +12,22 @@ jobs:
     steps:
       - checkout
       - run:
-          name : Build container and push to quay.io
+          name: Print env vars
+          command: |
+            echo "CIRCLE_TAG=${CIRCLE_TAG}"
+      - run:
+          name : Build container
+          command: |
+            make build
+            make ccm
+      - run:
+          name: Push container
           command: |
             echo "$QUAY_PASSWORD" | docker login quay.io --username $QUAY_USERNAME --password-stdin
             
             export REGISTRY=quay.io/giantswarm
-            make build
-            make ccm
+            if ! [[ -n $CIRCLE_TAG ]]; then make push-commit; fi
+            if [[ -n $CIRCLE_TAG ]]; then make push-tag; fi
 
 workflows:
   build-workflow:

@@ -23,15 +23,20 @@ OS ?= linux
 ARCH ?= amd64
 CGO ?= 0
 
-build-within-docker:
-	mkdir -p /build/cloud-provider-for-cloud-director
-	go mod vendor
-	go build -ldflags "-X github.com/vmware/cloud-provider-for-cloud-director/version.Version=$(VERSION)" -o /build/vcloud/cloud-provider-for-cloud-director cmd/ccm/main.go
+GOLANGCI_LINT ?= bin/golangci-lint
+GOSEC ?= bin/gosec
+SHELLCHECK ?= bin/shellcheck
 
 ccm: $(GO_CODE)
 	docker build --platform $(PLATFORM) -f Dockerfile . -t cloud-provider-for-cloud-director:$(VERSION) --build-arg CPI_BUILD_DIR=bin
+
+push-commit: 
 	docker tag cloud-provider-for-cloud-director:$(VERSION) $(REGISTRY)/cloud-provider-for-cloud-director:$(VERSION)-$(GITCOMMIT)
 	docker push $(REGISTRY)/cloud-provider-for-cloud-director:$(VERSION)-$(GITCOMMIT)
+
+push-tag:
+	docker tag cloud-provider-for-cloud-director:$(VERSION) $(REGISTRY)/cloud-provider-for-cloud-director:$(VERSION)
+	docker push $(REGISTRY)/cloud-provider-for-cloud-director:$(VERSION)
 
 .PHONY: all
 all: vendor lint dev
