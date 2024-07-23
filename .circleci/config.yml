@@ -34,3 +34,6 @@ workflows:
       - build:
           context:
             - architect
+          filters:
+            tags:
+              only: /^v.*/
