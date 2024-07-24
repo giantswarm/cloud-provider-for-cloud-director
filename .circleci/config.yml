@@ -23,9 +23,9 @@ jobs:
       - run:
           name: Push container
           command: |
-            echo "$QUAY_PASSWORD" | docker login quay.io --username $QUAY_USERNAME --password-stdin
+            echo "$ACR_GSOCI_PASSWORD" | docker login gsoci.azurecr.io --username $ACR_GSOCI_USERNAME --password-stdin
             
-            export REGISTRY=quay.io/giantswarm
+            export REGISTRY=gsoci.azurecr.io/giantswarm
             if ! [[ -n $CIRCLE_TAG ]]; then make push-commit; fi
             if [[ -n $CIRCLE_TAG ]]; then make push-tag; fi
 workflows:
