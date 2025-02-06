@@ -150,11 +150,9 @@ spec:
       serviceAccountName: cloud-controller-manager
       securityContext:
         runAsUser: 1000
-        runAsGroup: 3000
-        fsGroup: 2000
       containers:
         - name: vmware-cloud-director-ccm
-          image: harbor-repo.vmware.com/vcloud/cloud-provider-for-cloud-director:__VERSION__.__GIT_COMMIT__
+          image: projects.registry.vmware.com/vmware-cloud-director/cloud-provider-for-cloud-director:__VERSION__
           imagePullPolicy: IfNotPresent
           command:
             - /opt/vcloud/bin/cloud-provider-for-cloud-director
@@ -166,6 +164,8 @@ spec:
               mountPath: /etc/kubernetes/vcloud
             - name: vcloud-ccm-vcloud-basic-auth-volume
               mountPath: /etc/kubernetes/vcloud/basic-auth
+            - name: vcloud-capvcd-zones-volume
+              mountPath: /opt/vmware-cloud-director/ccm
       tolerations:
         - key: node.cloudprovider.kubernetes.io/uninitialized
           value: "true"
@@ -174,17 +174,22 @@ spec:
           operator: "Exists"
         - key: node-role.kubernetes.io/master
           effect: NoSchedule
+        - key: node-role.kubernetes.io/control-plane
+          effect: NoSchedule
       affinity:
         nodeAffinity:
           requiredDuringSchedulingIgnoredDuringExecution:
             nodeSelectorTerms:
               - matchExpressions:
-                - key: node-role.kubernetes.io/master
+                - key: node-role.kubernetes.io/control-plane
                   operator: "Exists"
       volumes:
         - name: vcloud-ccm-config-volume
           configMap:
             name: vcloud-ccm-configmap
+        - name: vcloud-capvcd-zones-volume
+          configMap:
+            name: vcloud-capvcd-zones
         - name: vcloud-ccm-vcloud-basic-auth-volume
           secret:
             secretName: vcloud-basic-auth

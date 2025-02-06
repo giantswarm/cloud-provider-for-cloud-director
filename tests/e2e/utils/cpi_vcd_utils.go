@@ -11,15 +11,20 @@ import (
 	"strings"
 )
 
-func NewTestClient(host, org, userOrg, vdcName, username, token, clusterId string, getVdcClient bool) (*testingsdk.TestClient, error) {
+const (
+	VCloudZoneConfigMapName      = "vcloud-capvcd-zones"
+	VCloudZoneConfigMapNamespace = "kube-system"
+)
+
+func NewTestClient(host, org, userOrg, ovdcIdentifier, username, token, clusterId string, getVdcClient bool) (*testingsdk.TestClient, error) {
 	vcdAuthParams := &testingsdk.VCDAuthParams{
-		Host:         host,
-		OrgName:      org,
-		UserOrg:      userOrg,
-		OvdcName:     vdcName,
-		Username:     username,
-		RefreshToken: token,
-		GetVdcClient: getVdcClient,
+		Host:           host,
+		OrgName:        org,
+		UserOrg:        userOrg,
+		OvdcIdentifier: ovdcIdentifier,
+		Username:       username,
+		RefreshToken:   token,
+		GetVdcClient:   getVdcClient,
 	}
 	return testingsdk.NewTestClient(vcdAuthParams, clusterId)
 }
@@ -119,4 +124,24 @@ func HasVCDResourcesForApplicationLB(ctx context.Context, testClient *testingsdk
 
 func getTrimmedClusterID(clusterId string) string {
 	return strings.TrimPrefix(clusterId, clusterUrnPrefix)
+}
+
+func GetVDCForZone(tc *testingsdk.TestClient, zoneName string) (string, error) {
+	zoneConfigMap, err := tc.GetConfigMap(VCloudZoneConfigMapNamespace, VCloudZoneConfigMapName)
+	if err != nil {
+		return "", fmt.Errorf("failed to get the zone config map: [%v]", err)
+	}
+	if zoneConfigMap == nil {
+		return "", fmt.Errorf("zone config map is nil")
+	}
+	zoneToOVDC, err := tc.GetZoneMapFromZoneConfigMap(zoneConfigMap)
+	if err != nil {
+		return "", fmt.Errorf("failed to get zone name to ovdc name mapping: [%v]", err)
+	}
+
+	ovdcName, ok := zoneToOVDC[zoneName]
+	if !ok {
+		return "", fmt.Errorf("zone config map doesn't have an entry for the zone name")
+	}
+	return ovdcName, nil
 }

@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/vmware/cloud-provider-for-cloud-director/pkg/vcdsdk"
-	swaggerClient "github.com/vmware/cloud-provider-for-cloud-director/pkg/vcdswaggerclient"
+	swaggerClient "github.com/vmware/cloud-provider-for-cloud-director/pkg/vcdswaggerclient_37_2"
 	"github.com/vmware/cloud-provider-for-cloud-director/release"
 	"k8s.io/klog"
 	"net/http"
@@ -56,7 +56,8 @@ func (cpiRDEManager *CPIRDEManager) GetRDEVirtualIps(ctx context.Context) ([]str
 	if clusterOrg == nil || clusterOrg.Org == nil {
 		return nil, "", nil, fmt.Errorf("obtained nil org for name [%s]", client.ClusterOrgName)
 	}
-	defEnt, _, etag, err := client.APIClient.DefinedEntityApi.GetDefinedEntity(ctx, cpiRDEManager.RDEManager.ClusterID, clusterOrg.Org.ID)
+	defEnt, _, etag, err := client.APIClient.DefinedEntityApi.GetDefinedEntity(ctx, cpiRDEManager.RDEManager.ClusterID,
+		clusterOrg.Org.ID, nil)
 	if err != nil {
 		return nil, "", nil, fmt.Errorf("error when getting defined entity: [%v]", err)
 	}
@@ -267,7 +268,7 @@ func UpgradeCPISectionInStatus(statusMap map[string]interface{}) (map[string]int
 	// CPIStatus should update with {X, Y, Z=default}. Developers should update property Z at this place.
 	//PUT RDE.status.CPI should update with {X, Y, Z=updatedValue}
 	cpiStatus.Name = release.CloudControllerManagerName
-	cpiStatus.Version = release.CpiVersion
+	cpiStatus.Version = release.Version
 	// CPI section is missing from the RDE status. Create a new CPI status and update the RDE.
 	cpiStatusMap, err := convertCPIStatusToMap(*cpiStatus)
 	if err != nil {
@@ -296,7 +297,7 @@ func (cpiRDEManager *CPIRDEManager) UpgradeCPIStatusOfExistingRDE(ctx context.Co
 		return fmt.Errorf("obtained nil org for name [%s]", client.ClusterOrgName)
 	}
 	for retries := 0; retries < vcdsdk.MaxRDEUpdateRetries; retries++ {
-		rde, resp, etag, err := client.APIClient.DefinedEntityApi.GetDefinedEntity(ctx, rdeId, clusterOrg.Org.ID)
+		rde, resp, etag, err := client.APIClient.DefinedEntityApi.GetDefinedEntity(ctx, rdeId, clusterOrg.Org.ID, nil)
 		if resp != nil && resp.StatusCode != http.StatusOK {
 			var responseMessageBytes []byte
 			if gsErr, ok := err.(swaggerClient.GenericSwaggerError); ok {
@@ -375,7 +376,7 @@ func (cpiRDEManager *CPIRDEManager) AddVIPToVCDResourceSet(ctx context.Context, 
 	}
 	for i := vcdsdk.MaxRDEUpdateRetries; i > 1; i-- {
 		rde, resp, etag, err := cpiRDEManager.RDEManager.Client.APIClient.DefinedEntityApi.GetDefinedEntity(
-			ctx, cpiRDEManager.RDEManager.ClusterID, clusterOrg.Org.ID)
+			ctx, cpiRDEManager.RDEManager.ClusterID, clusterOrg.Org.ID, nil)
 		if resp != nil && resp.StatusCode != http.StatusOK {
 			var responseMessageBytes []byte
 			if gsErr, ok := err.(swaggerClient.GenericSwaggerError); ok {
@@ -416,7 +417,7 @@ func (cpiRDEManager *CPIRDEManager) AddVIPToVCDResourceSet(ctx context.Context, 
 				cpiRDEManager.RDEManager.ClusterID, vcdsdk.ComponentCPI, err)
 		}
 		if !rdeUpdateRequired {
-			klog.V(3).Info("VCD resource set for the RDE [%s(%s)] already has the resource [%v] in the status of the component [%s]",
+			klog.V(3).Infof("VCD resource set for the RDE [%s(%s)] already has the resource [%v] in the status of the component [%s]",
 				rde.Name, rde.Id, vcdResource, vcdsdk.ComponentCPI)
 			return nil
 		}

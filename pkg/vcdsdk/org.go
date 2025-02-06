@@ -6,6 +6,7 @@ import (
 	"github.com/vmware/go-vcloud-director/v2/govcd"
 	"github.com/vmware/go-vcloud-director/v2/types/v56"
 	"net/url"
+	"strings"
 )
 
 type OrgManager struct {
@@ -71,4 +72,73 @@ func (orgManager *OrgManager) GetComputePolicyDetailsFromName(computePolicyName 
 	}
 
 	return computePolicy, nil
+}
+
+func (orgManager *OrgManager) SearchVMAcrossVDCs(vmName string, clusterName string, vmId string,
+	isMultiZoneCluster bool) (*govcd.VM, string, error) {
+
+	org, err := orgManager.Client.VCDClient.GetOrgByName(orgManager.OrgName)
+	if err != nil {
+		return nil, "", fmt.Errorf("unable to get org by name [%s]: [%v]", orgManager.OrgName, err)
+	}
+
+	var vmRecordList []*types.QueryResultVMRecordType = nil
+
+	if vmName != "" {
+		vmRecordList, err = govcd.QueryVmList(types.VmQueryFilterOnlyDeployed, &orgManager.Client.VCDClient.Client,
+			map[string]string{"name": vmName})
+		if err != nil {
+			return nil, "", fmt.Errorf("unable to query all VMs using name [%s]: [%v]", vmName, err)
+		}
+	} else if vmId != "" {
+		vmRecordList, err = govcd.QueryVmList(types.VmQueryFilterOnlyDeployed, &orgManager.Client.VCDClient.Client,
+			map[string]string{"id": vmId})
+		if err != nil {
+			return nil, "", fmt.Errorf("unable to query all VMs using ID [%s]: [%v]", vmId, err)
+		}
+	} else {
+		return nil, "", fmt.Errorf("unable to query VM when name and ID are both not provided")
+	}
+
+	for _, vmRecord := range vmRecordList {
+		if vmId != "" || // there is no need to correlate VM ID since it is unique across VCD
+			(vmName != "" && vmRecord.Name == vmName) {
+			vdc, err := org.GetVDCByHref(vmRecord.VdcHREF)
+			if err != nil {
+				return nil, "", fmt.Errorf("found vm [%s, %s] in VDC with HREF[%s], but VDC could not be queried: [%v]",
+					vmName, vmId, vmRecord.VdcHREF, err)
+			}
+
+			vm, err := orgManager.Client.VCDClient.Client.GetVMByHref(vmRecord.HREF)
+			if err != nil {
+				return nil, "", fmt.Errorf("unable to find VM [%s, %s] by HREF [%s]: [%v]",
+					vmName, vmId, vmRecord.HREF, err)
+			}
+
+			vApp, err := vm.GetParentVApp()
+			if err != nil {
+				return nil, "", fmt.Errorf("unable to get parent of VM [%s, %s]: [%v]", vmName, vmId, err)
+			}
+
+			if isMultiZoneCluster {
+				vdcUUID := vdc.Vdc.ID
+				vdcIdParts := strings.Split(vdc.Vdc.ID, ":")
+				if len(vdcIdParts) == 4 {
+					vdcUUID = vdcIdParts[3]
+				}
+				// In this case we need to check if the vApp Name is a proper prefix
+				if !strings.HasPrefix(vApp.VApp.Name, fmt.Sprintf("%s_%s", clusterName, vdcUUID)) {
+					continue
+				}
+			} else {
+				if vApp.VApp.Name != clusterName {
+					continue
+				}
+			}
+
+			return vm, vdc.Vdc.Name, nil
+		}
+	}
+
+	return nil, "", govcd.ErrorEntityNotFound
 }

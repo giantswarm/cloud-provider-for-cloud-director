@@ -173,6 +173,9 @@ func (adminOrg *AdminOrg) CreateVdc(vdcConfiguration *types.VdcConfiguration) (T
 
 	// Return the task
 	task := NewTask(adminOrg.client)
+	if adminVdc.AdminVdc.Tasks == nil || len(adminVdc.AdminVdc.Tasks.Task) == 0 {
+		return Task{}, fmt.Errorf("no task found after VDC %s creation", vdcConfiguration.Name)
+	}
 	task.Task = adminVdc.AdminVdc.Tasks.Task[0]
 	return *task, nil
 }
@@ -250,6 +253,10 @@ func (adminVdc *AdminVdc) Update() (AdminVdc, error) {
 	}
 
 	util.Logger.Printf("[DEBUG] Update call function for version %s", vdcFunctions.SupportedVersion)
+
+	// Explicitly remove ResourcePoolRefs because it cannot be set and breaks Go marshaling bug
+	// https://github.com/golang/go/issues/9519
+	adminVdc.AdminVdc.ResourcePoolRefs = nil
 
 	updatedAdminVdc, err := vdcFunctions.UpdateVdc(adminVdc)
 	if err != nil {
@@ -372,6 +379,9 @@ func createVdcAsyncV97(adminOrg *AdminOrg, vdcConfiguration *types.VdcConfigurat
 
 	// Return the task
 	task := NewTask(adminOrg.client)
+	if adminVdc.AdminVdc.Tasks == nil || len(adminVdc.AdminVdc.Tasks.Task) == 0 {
+		return Task{}, fmt.Errorf("no task found after VDC %s creation", vdcConfiguration.Name)
+	}
 	task.Task = adminVdc.AdminVdc.Tasks.Task[0]
 	return *task, nil
 }
@@ -483,13 +493,13 @@ func (vdc *AdminVdc) RemoveStorageProfile(storageProfileName string) (Task, erro
 	if err != nil {
 		return Task{}, fmt.Errorf("cannot retrieve VDC storage profile '%s' details: %s", storageProfileName, err)
 	}
-	if vdcStorageProfileDetails.Enabled {
+	if vdcStorageProfileDetails.Enabled != nil && *vdcStorageProfileDetails.Enabled {
 		_, err = vdc.UpdateStorageProfile(extractUuid(storageProfile.HREF), &types.AdminVdcStorageProfile{
 			Name:    vdcStorageProfileDetails.Name,
 			Units:   vdcStorageProfileDetails.Units,
 			Limit:   vdcStorageProfileDetails.Limit,
 			Default: false,
-			Enabled: takeBoolPointer(false),
+			Enabled: addrOf(false),
 			ProviderVdcStorageProfile: &types.Reference{
 				HREF: vdcStorageProfileDetails.ProviderVdcStorageProfile.HREF,
 			},
@@ -557,7 +567,7 @@ func (vdc *AdminVdc) SetDefaultStorageProfile(storageProfileName string) error {
 		Units:   vdcStorageProfileDetails.Units,
 		Limit:   vdcStorageProfileDetails.Limit,
 		Default: true,
-		Enabled: takeBoolPointer(true),
+		Enabled: addrOf(true),
 		ProviderVdcStorageProfile: &types.Reference{
 			HREF: vdcStorageProfileDetails.ProviderVdcStorageProfile.HREF,
 		},
@@ -591,4 +601,12 @@ func (adminVdc *AdminVdc) GetDefaultStorageProfileReference() (*types.Reference,
 		return defaultSp, nil
 	}
 	return nil, fmt.Errorf("no default storage profile found for VDC %s", adminVdc.AdminVdc.Name)
+}
+
+// IsNsxv is a convenience function to check if the Admin VDC is backed by NSX-V Provider VDC
+func (adminVdc *AdminVdc) IsNsxv() bool {
+	vdc := NewVdc(adminVdc.client)
+	vdc.Vdc = &adminVdc.AdminVdc.Vdc
+	vdc.parent = adminVdc.parent
+	return vdc.IsNsxv()
 }

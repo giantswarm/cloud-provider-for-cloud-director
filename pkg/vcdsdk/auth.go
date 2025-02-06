@@ -8,7 +8,7 @@ package vcdsdk
 import (
 	"crypto/tls"
 	"fmt"
-	swaggerClient "github.com/vmware/cloud-provider-for-cloud-director/pkg/vcdswaggerclient"
+	swaggerClient "github.com/vmware/cloud-provider-for-cloud-director/pkg/vcdswaggerclient_37_2"
 	"github.com/vmware/go-vcloud-director/v2/govcd"
 	"k8s.io/klog"
 	"net/http"
@@ -16,7 +16,7 @@ import (
 )
 
 const (
-	VCloudApiVersion = "36.0"
+	VCloudApiVersion_37_2 = "37.2"
 )
 
 // VCDAuthConfig : contains config related to vcd auth
@@ -40,7 +40,13 @@ func (config *VCDAuthConfig) GetBearerToken() (*govcd.VCDClient, *http.Response,
 	}
 
 	vcdClient := govcd.NewVCDClient(*u, config.Insecure)
-	vcdClient.Client.APIVersion = VCloudApiVersion
+	// continue using API version 36.0 for GoVCD clients
+	vcdClient.Client.APIVersion = VCloudApiVersion_37_2
+	if err != nil {
+		klog.Errorf("failed to set API version on GoVCD client: [%v]", err)
+		return nil, nil, fmt.Errorf("failed to set API version on the GoVCD client: [%v]", err)
+	}
+
 	klog.Infof("Using VCD OpenAPI version [%s]", vcdClient.Client.APIVersion)
 
 	var resp *http.Response
@@ -86,16 +92,18 @@ func (config *VCDAuthConfig) GetSwaggerClientFromSecrets() (*govcd.VCDClient, *s
 	}
 	authHeader := fmt.Sprintf("Bearer %s", vcdClient.Client.VCDToken)
 
-	swaggerConfig := swaggerClient.NewConfiguration()
-	swaggerConfig.BasePath = fmt.Sprintf("%s/cloudapi", config.Host)
-	swaggerConfig.AddDefaultHeader("Authorization", authHeader)
-	swaggerConfig.HTTPClient = &http.Client{
+	// initialize swagger client for API version 37.2 only if the API version 37.2 is available
+	swaggerConfig37 := swaggerClient.NewConfiguration()
+	swaggerConfig37.BasePath = fmt.Sprintf("%s/cloudapi", config.Host)
+	swaggerConfig37.AddDefaultHeader("Authorization", authHeader)
+	swaggerConfig37.HTTPClient = &http.Client{
 		Transport: &http.Transport{
 			TLSClientConfig: &tls.Config{InsecureSkipVerify: config.Insecure},
 		},
 	}
+	apiClient37 := swaggerClient.NewAPIClient(swaggerConfig37)
 
-	return vcdClient, swaggerClient.NewAPIClient(swaggerConfig), nil
+	return vcdClient, apiClient37, nil
 }
 
 func (config *VCDAuthConfig) GetPlainClientFromSecrets() (*govcd.VCDClient, error) {
@@ -107,7 +115,8 @@ func (config *VCDAuthConfig) GetPlainClientFromSecrets() (*govcd.VCDClient, erro
 	}
 
 	vcdClient := govcd.NewVCDClient(*u, config.Insecure)
-	vcdClient.Client.APIVersion = VCloudApiVersion
+	// continue using API version 36 for GoVCD clients
+	vcdClient.Client.APIVersion = VCloudApiVersion_37_2
 	klog.Infof("Using VCD XML API version [%s]", vcdClient.Client.APIVersion)
 	if err = vcdClient.Authenticate(config.User, config.Password, config.UserOrg); err != nil {
 		return nil, fmt.Errorf("cannot authenticate with vcd: [%v]", err)

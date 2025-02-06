@@ -1,0 +1,20 @@
+{
+	"name":"cpi-crs-airgapped",
+	"version":"__VERSION__",
+	"components": {
+		"manifests":[
+			{
+				"name": "cloud-director-ccm-crs-airgap.yaml.template",
+				"url": ""
+			}
+		],
+		"binaries": [],
+		"dependencies": [
+			{
+				"name":"vmware-cloud-director/cloud-provider-for-cloud-director",
+				"version":"__VERSION__",
+				"imageRepository":"__REGISTRY__"
+			}
+		]
+	}
+}

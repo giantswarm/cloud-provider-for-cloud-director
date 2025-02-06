@@ -20,9 +20,10 @@ import (
 )
 
 type VersionInfo struct {
-	Version    string `xml:"Version"`
-	LoginUrl   string `xml:"LoginUrl"`
-	Deprecated bool   `xml:"deprecated,attr,omitempty"`
+	Version          string `xml:"Version"`
+	LoginUrl         string `xml:"LoginUrl"`
+	ProviderLoginUrl string `xml:"ProviderLoginUrl"`
+	Deprecated       bool   `xml:"deprecated,attr,omitempty"`
 }
 
 type VersionInfos []VersionInfo
@@ -46,7 +47,8 @@ var apiVersionToVcdVersion = map[string]string{
 	"33.0": "10.0",
 	"34.0": "10.1",
 	"35.0": "10.2",
-	"36.0": "10.3", // Provisional version for non-GA release. It may change later
+	"36.0": "10.3",
+	"37.0": "10.4", // Provisional version for non-GA release. It may change later
 }
 
 // vcdVersionToApiVersion gets the max supported API version from vCD version
@@ -58,7 +60,8 @@ var vcdVersionToApiVersion = map[string]string{
 	"10.0": "33.0",
 	"10.1": "34.0",
 	"10.2": "35.0",
-	"10.3": "36.0", // Provisional version for non-GA release. It may change later
+	"10.3": "36.0",
+	"10.4": "37.0", // Provisional version for non-GA release. It may change later
 }
 
 // to make vcdVersionToApiVersion used
@@ -228,13 +231,25 @@ func (client *Client) validateAPIVersion() error {
 	return nil
 }
 
-// GetSpecificApiVersionOnCondition returns default version or wantedApiVersion if it is connected to version
-// described in vcdApiVersionCondition
-// f.e. values ">= 32.0", "32.0" returns 32.0 if vCD version is above or 9.7
-func (client *Client) GetSpecificApiVersionOnCondition(vcdApiVersionCondition, wantedApiVersion string) string {
+// GetSpecificApiVersionOnCondition returns default version or wantedApiVersion if it is connected
+// to version described in vcdApiVersionCondition e.g. values ">= 32.0", "32.0" returns 32.0 if vCD
+// version is above or 9.7
+// Note. This function will always respect minimum supported API version which is defined in
+// client.APIVersion. If the wantedApiVersionOrMinimumRequired is less than minimum supported
+// version, this function will return the minimum supported version. This means that it must be be
+// well tested when client.APIVersion is bumped to avoid unexpected errors due to newer API version
+// being used.
+func (client *Client) GetSpecificApiVersionOnCondition(vcdApiVersionCondition, wantedApiVersionOrMinimumRequired string) string {
 	apiVersion := client.APIVersion
 	if client.APIVCDMaxVersionIs(vcdApiVersionCondition) {
-		apiVersion = wantedApiVersion
+		versionConstraint := fmt.Sprintf(">= %s", apiVersion)
+		// only if the version is not less than minimum supported version 'client.APIVersion' we can
+		// specify 'wantedApiVersionOrMinimumRequired'
+		if matches, err := client.apiVersionMatchesConstraint(wantedApiVersionOrMinimumRequired, versionConstraint); err == nil && matches {
+			return wantedApiVersionOrMinimumRequired
+		}
+		util.Logger.Printf("[TRACE] API version %s does not satisfy constraints '%s'. Will use minimum supported version '%s'.",
+			wantedApiVersionOrMinimumRequired, versionConstraint, apiVersion)
 	}
 	return apiVersion
 }
@@ -321,12 +336,15 @@ func intListToVersion(digits []int, atMost int) string {
 // VersionEqualOrGreater return true if the current version is the same or greater than the one being compared.
 // If howManyDigits is > 3, the comparison includes the build.
 // Examples:
-//  client version is 1.2.3.1234
-//  compare version is 1.2.3.2000
+//
+//	client version is 1.2.3.1234
+//	compare version is 1.2.3.2000
+//
 // function return true if howManyDigits is <= 3, but false if howManyDigits is > 3
 //
-//  client version is 1.2.3.1234
-//  compare version is 1.1.1.0
+//	client version is 1.2.3.1234
+//	compare version is 1.1.1.0
+//
 // function returns true regardless of value of howManyDigits
 func (client *Client) VersionEqualOrGreater(compareTo string, howManyDigits int) (bool, error) {
 

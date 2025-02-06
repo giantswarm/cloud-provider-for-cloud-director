@@ -31,9 +31,11 @@ const (
 
 // VCDCloudProvider - contains all of the interfaces for our cloud provider
 type VCDCloudProvider struct {
-	vcdClient *vcdsdk.Client
-	lb        cloudProvider.LoadBalancer
-	instances cloudProvider.Instances
+	vcdClient   *vcdsdk.Client
+	lb          cloudProvider.LoadBalancer
+	instances   cloudProvider.Instances
+	instancesV2 cloudProvider.InstancesV2
+	zoneMap     *vcdsdk.ZoneMap
 }
 
 var _ cloudProvider.Interface = &VCDCloudProvider{}
@@ -83,7 +85,7 @@ func newVCDCloudProvider(configReader io.Reader) (cloudProvider.Interface, error
 		time.Sleep(10 * time.Second)
 	}
 
-	rdeManager := vcdsdk.NewRDEManager(vcdClient, cloudConfig.ClusterID, release.CloudControllerManagerName, release.CpiVersion)
+	rdeManager := vcdsdk.NewRDEManager(vcdClient, cloudConfig.ClusterID, release.CloudControllerManagerName, release.Version)
 	cpiRdeManager := cpisdk.NewCPIRDEManager(rdeManager)
 
 	err = cpiRdeManager.AddToEventSet(context.Background(), cpisdk.ClientAuthenticated, cloudConfig.ClusterID, "successfully authenticated into vcdclient from secrets")
@@ -93,7 +95,7 @@ func newVCDCloudProvider(configReader io.Reader) (cloudProvider.Interface, error
 
 	// setup LB only if the gateway is not NSX-T
 	var lb cloudProvider.LoadBalancer = nil
-	gm, err := vcdsdk.NewGatewayManager(context.Background(), vcdClient, cloudConfig.LB.VDCNetwork, cloudConfig.LB.VIPSubnet)
+	gm, err := vcdsdk.NewGatewayManager(context.Background(), vcdClient, cloudConfig.LB.VDCNetwork, cloudConfig.LB.VIPSubnet, cloudConfig.VCD.VDC)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create GatewayManager: [%v]", err)
 	}
@@ -108,12 +110,9 @@ func newVCDCloudProvider(configReader io.Reader) (cloudProvider.Interface, error
 				EndIP:   cloudConfig.LB.OneArm.EndIP,
 			}
 		}
-		lb = newLoadBalancer(vcdClient, cloudConfig.LB.CertificateAlias, oneArm, cloudConfig.LB.VDCNetwork,
+		lb = newLoadBalancer(vcdClient, cloudConfig.LB.CertificateAlias, oneArm, cloudConfig.LB.VDCNetwork, cloudConfig.VCD.VDC,
 			cloudConfig.LB.VIPSubnet, cloudConfig.ClusterID, cloudConfig.LB.EnableVirtualServiceSharedIP)
 	}
-
-	// cache for VM Info with an refresh of elements needed after 1 minute
-	vmInfoCache := newVmInfoCache(vcdClient, cloudConfig.VAppName, time.Minute)
 
 	// TODO: upgrade all CAPVCD RDEs here
 
@@ -141,11 +140,24 @@ func newVCDCloudProvider(configReader io.Reader) (cloudProvider.Interface, error
 		}
 	}
 
+	var zm *vcdsdk.ZoneMap = nil
+	if cloudConfig.VCD.IsZoneEnabledCluster {
+		if zm, err = vcdsdk.NewZoneMap(vcdsdk.ZoneMapConfigFilePath); err != nil {
+			return nil, fmt.Errorf("unable to create new zone map from configmap file [%s]: [%v]",
+				vcdsdk.ZoneMapConfigFilePath, err)
+		}
+	}
+
+	// cache for VM Info with an refresh of elements needed after 1 minute
+	vmInfoCache := newVmInfoCache(vcdClient, cloudConfig.VAppName, time.Minute, zm)
+
 	// TODO: Do we need to record anything from instances from errors/events aspect?
 	return &VCDCloudProvider{
-		vcdClient: vcdClient,
-		lb:        lb,
-		instances: newInstances(vmInfoCache),
+		vcdClient:   vcdClient,
+		lb:          lb,
+		instances:   newInstances(vmInfoCache),
+		instancesV2: newInstancesV2(vmInfoCache, zm),
+		zoneMap:     zm,
 	}, nil
 }
 
@@ -174,11 +186,6 @@ func (vcdCP *VCDCloudProvider) LoadBalancer() (cloudProvider.LoadBalancer, bool)
 		return nil, false
 	}
 	return vcdCP.lb, true
-}
-
-// Instances returns an instances interface. Also returns true if the interface is supported, false otherwise.
-func (vcdCP *VCDCloudProvider) Instances() (cloudProvider.Instances, bool) {
-	return vcdCP.instances, true
 }
 
 // Zones returns a zones interface. Also returns true if the interface is supported, false otherwise.

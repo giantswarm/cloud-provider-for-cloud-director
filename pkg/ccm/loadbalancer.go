@@ -11,6 +11,9 @@ package ccm
 import (
 	"context"
 	"fmt"
+	"strconv"
+	"strings"
+
 	"github.com/vmware/cloud-provider-for-cloud-director/pkg/cpisdk"
 	"github.com/vmware/cloud-provider-for-cloud-director/pkg/util"
 	"github.com/vmware/cloud-provider-for-cloud-director/pkg/vcdsdk"
@@ -22,19 +25,17 @@ import (
 	"k8s.io/client-go/kubernetes"
 	cloudProvider "k8s.io/cloud-provider"
 	"k8s.io/klog"
-	"strconv"
-	"strings"
 )
 
 const (
-	sslPortsAnnotation     = `service.beta.kubernetes.io/vcloud-avi-ssl-ports`
-	sslCertAliasAnnotation = `service.beta.kubernetes.io/vcloud-avi-ssl-cert-alias`
-	skipAviSSLTerminationAnnotation     = `service.beta.kubernetes.io/vcloud-avi-ssl-no-termination`
+	sslPortsAnnotation              = `service.beta.kubernetes.io/vcloud-avi-ssl-ports`
+	sslCertAliasAnnotation          = `service.beta.kubernetes.io/vcloud-avi-ssl-cert-alias`
+	skipAviSSLTerminationAnnotation = `service.beta.kubernetes.io/vcloud-avi-ssl-no-termination`
 	// TODO: Update controlPlaneLabel to use default K8s constants if available
 	controlPlaneLabel = `node-role.kubernetes.io/control-plane`
 )
 
-//LBManager -
+// LBManager -
 type LBManager struct {
 	gatewayManager               *vcdsdk.GatewayManager
 	vcdClient                    *vcdsdk.Client
@@ -43,13 +44,14 @@ type LBManager struct {
 	CertificateAlias             string
 	OneArm                       *vcdsdk.OneArm
 	ovdcNetworkName              string
+	ovdcIdentifier               string
 	ipamSubnet                   string
 	clusterID                    string
 	EnableVirtualServiceSharedIP bool
 }
 
 func newLoadBalancer(vcdClient *vcdsdk.Client, certAlias string, oneArm *vcdsdk.OneArm,
-	ovdcNetworkName string, ipamSubnet string, clusterID string, enableVirtualServiceSharedIP bool) cloudProvider.LoadBalancer {
+	ovdcNetworkName string, ovdcIdentifier string, ipamSubnet string, clusterID string, enableVirtualServiceSharedIP bool) cloudProvider.LoadBalancer {
 
 	return &LBManager{
 		vcdClient:                    vcdClient,
@@ -58,6 +60,7 @@ func newLoadBalancer(vcdClient *vcdsdk.Client, certAlias string, oneArm *vcdsdk.
 		CertificateAlias:             certAlias,
 		OneArm:                       oneArm,
 		ovdcNetworkName:              ovdcNetworkName,
+		ovdcIdentifier:               ovdcIdentifier,
 		ipamSubnet:                   ipamSubnet,
 		clusterID:                    clusterID,
 		EnableVirtualServiceSharedIP: enableVirtualServiceSharedIP,
@@ -66,7 +69,7 @@ func newLoadBalancer(vcdClient *vcdsdk.Client, certAlias string, oneArm *vcdsdk.
 
 // TODO: Should we add errors from this method to errorSet as it gives a few hard error returns?
 func (lb *LBManager) addLBResourcesToRDE(ctx context.Context, resourcesAllocated *util.AllocatedResourcesMap, externalIP string) error {
-	rdeManager := vcdsdk.NewRDEManager(lb.vcdClient, lb.clusterID, release.CloudControllerManagerName, release.CpiVersion)
+	rdeManager := vcdsdk.NewRDEManager(lb.vcdClient, lb.clusterID, release.CloudControllerManagerName, release.Version)
 	for _, key := range []string{vcdsdk.VcdResourceDNATRule, vcdsdk.VcdResourceLoadBalancerPool, vcdsdk.VcdResourceAppPortProfile, vcdsdk.VcdResourceVirtualService} {
 		if values := resourcesAllocated.Get(key); values != nil {
 			for _, value := range values {
@@ -96,7 +99,7 @@ func (lb *LBManager) addLBResourcesToRDE(ctx context.Context, resourcesAllocated
 
 // TODO: Should we add errors from this method to errorSet as it gives a few hard error returns?
 func (lb *LBManager) removeLBResourcesFromRDE(ctx context.Context, resourcesDeallocated *util.AllocatedResourcesMap) error {
-	rdeManager := vcdsdk.NewRDEManager(lb.vcdClient, lb.clusterID, release.CloudControllerManagerName, release.CpiVersion)
+	rdeManager := vcdsdk.NewRDEManager(lb.vcdClient, lb.clusterID, release.CloudControllerManagerName, release.Version)
 	for _, key := range []string{vcdsdk.VcdResourceDNATRule, vcdsdk.VcdResourceVirtualService,
 		vcdsdk.VcdResourceLoadBalancerPool, vcdsdk.VcdResourceAppPortProfile} {
 		if values := resourcesDeallocated.Get(key); values != nil {
@@ -163,6 +166,8 @@ func (lb *LBManager) getServicePortMap(service *v1.Service) (map[string]int32, m
 		typeToExternalPort[strings.ToLower(port.Name)] = port.Port
 		if port.AppProtocol != nil {
 			nameToProtocol[strings.ToLower(port.Name)] = strings.ToUpper(*port.AppProtocol)
+		} else {
+			nameToProtocol[strings.ToLower(port.Name)] = strings.ToUpper(string(port.Protocol))
 		}
 	}
 	return typeToInternalPort, typeToExternalPort, nameToProtocol
@@ -206,7 +211,7 @@ func (lb *LBManager) UpdateLoadBalancer(ctx context.Context, clusterName string,
 	lbPoolNamePrefix := lb.getLBPoolNamePrefix(ctx, service)
 	virtualServiceNamePrefix := lb.getVirtualServicePrefix(ctx, service)
 	typeToInternalPortMap, typeToExternalPort, nameToProtocol := lb.getServicePortMap(service)
-	rdeManager := vcdsdk.NewRDEManager(lb.vcdClient, lb.clusterID, release.CloudControllerManagerName, release.CpiVersion)
+	rdeManager := vcdsdk.NewRDEManager(lb.vcdClient, lb.clusterID, release.CloudControllerManagerName, release.Version)
 	cpiRdeManager := cpisdk.NewCPIRDEManager(rdeManager)
 
 	// fetch the user specified IP address for the load balancer
@@ -219,7 +224,7 @@ func (lb *LBManager) UpdateLoadBalancer(ctx context.Context, clusterName string,
 		lbPoolName := fmt.Sprintf("%s-%s", lbPoolNamePrefix, portName)
 		virtualServiceName := fmt.Sprintf("%s-%s", virtualServiceNamePrefix, portName)
 		externalPort := typeToExternalPort[portName]
-		gm, err := vcdsdk.NewGatewayManager(ctx, lb.vcdClient, lb.ovdcNetworkName, lb.ipamSubnet)
+		gm, err := vcdsdk.NewGatewayManager(ctx, lb.vcdClient, lb.ovdcNetworkName, lb.ipamSubnet, lb.ovdcIdentifier)
 		if err != nil {
 			return fmt.Errorf("error while creating GatewayManager: [%v]", err)
 		}
@@ -288,13 +293,13 @@ func (lb *LBManager) getLoadBalancer(ctx context.Context,
 
 	virtualServiceNamePrefix := lb.getLoadBalancerPrefix(ctx, service)
 	virtualIP := ""
-	gm, err := vcdsdk.NewGatewayManager(ctx, lb.vcdClient, lb.ovdcNetworkName, lb.ipamSubnet)
+	gm, err := vcdsdk.NewGatewayManager(ctx, lb.vcdClient, lb.ovdcNetworkName, lb.ipamSubnet, lb.ovdcIdentifier)
 	if err != nil {
 		return nil, nil, fmt.Errorf("error while creating GatewayManager: [%v]", err)
 	}
 
 	cpiRdeManager := cpisdk.NewCPIRDEManager(vcdsdk.NewRDEManager(
-		lb.vcdClient, lb.clusterID, release.CloudControllerManagerName, release.CpiVersion))
+		lb.vcdClient, lb.clusterID, release.CloudControllerManagerName, release.Version))
 
 	portNameToIP := make(map[string]string)
 	ingressVirtualIP := ""
@@ -401,6 +406,13 @@ func (lb *LBManager) getVirtualServicePrefix(_ context.Context, service *v1.Serv
 	return fmt.Sprintf("ingress-vs-%s-%s", service.Name, lb.getTrimmedClusterID())
 }
 
+// getLoadBalancerIpClaimMarker returns a string comprising the service namespace, service name and
+// cluster Id, which allows CPI to uniquely mark an IP Allocation (from an Ip Space) being owned
+// by a particular service running on a specific cluster under a specific namespace
+func (lb *LBManager) getLoadBalancerIpClaimMarker(_ context.Context, service *v1.Service) string {
+	return fmt.Sprintf("cluster-%s-namespace-%s-service-%s", lb.getTrimmedClusterID(), service.Namespace, service.Name)
+}
+
 // GetLoadBalancerName returns the name of the load balancer. Implementations must treat the
 // *v1.Service parameter as read-only and not modify it.
 func (lb *LBManager) GetLoadBalancerName(ctx context.Context, clusterName string, service *v1.Service) string {
@@ -409,6 +421,7 @@ func (lb *LBManager) GetLoadBalancerName(ctx context.Context, clusterName string
 
 func (lb *LBManager) deleteLoadBalancer(ctx context.Context, service *v1.Service) error {
 
+	lbIpClaimMarker := lb.getLoadBalancerIpClaimMarker(ctx, service)
 	virtualServiceName := lb.getVirtualServicePrefix(ctx, service)
 	lbPoolNamePrefix := lb.getLBPoolNamePrefix(ctx, service)
 	klog.Infof("Deleting virtual service [%s] and lb pool [%s]", virtualServiceName, lbPoolNamePrefix)
@@ -425,19 +438,19 @@ func (lb *LBManager) deleteLoadBalancer(ctx context.Context, service *v1.Service
 	}
 	klog.Infof("Deleting loadbalancer for ports [%#v]\n", portDetailsList)
 
-	gm, err := vcdsdk.NewGatewayManager(ctx, lb.vcdClient, lb.ovdcNetworkName, lb.ipamSubnet)
+	gm, err := vcdsdk.NewGatewayManager(ctx, lb.vcdClient, lb.ovdcNetworkName, lb.ipamSubnet, lb.ovdcIdentifier)
 	if err != nil {
 		return fmt.Errorf("error while creating GatewayManager: [%v]", err)
 	}
 	resourcesDeallocated := &util.AllocatedResourcesMap{}
-	vip, err := gm.DeleteLoadBalancer(ctx, virtualServiceName, lbPoolNamePrefix, portDetailsList, lb.OneArm, resourcesDeallocated)
+	vip, err := gm.DeleteLoadBalancer(ctx, virtualServiceName, lbPoolNamePrefix, lbIpClaimMarker, portDetailsList, lb.OneArm, resourcesDeallocated)
 	if rdeErr := lb.removeLBResourcesFromRDE(ctx, resourcesDeallocated); rdeErr != nil {
 		klog.Errorf("failed to remove loadbalancer resources from RDE [%s]: [%v]", lb.clusterID, rdeErr)
 		return fmt.Errorf("failed to remove loadbalancer resources from RDE [%s]: [%v]", lb.clusterID, rdeErr)
 	}
 
 	cpiRdeManager := cpisdk.NewCPIRDEManager(vcdsdk.NewRDEManager(
-		lb.vcdClient, lb.clusterID, release.CloudControllerManagerName, release.CpiVersion))
+		lb.vcdClient, lb.clusterID, release.CloudControllerManagerName, release.Version))
 
 	if err != nil {
 		addToErrorSetErr := cpiRdeManager.AddToErrorSetWithNameAndId(ctx, cpisdk.DeleteLoadbalancerError, "", virtualServiceName, err.Error())
@@ -458,7 +471,7 @@ func (lb *LBManager) deleteLoadBalancer(ctx context.Context, service *v1.Service
 
 	err = cpiRdeManager.RDEManager.RemoveErrorByNameOrIdFromErrorSet(ctx, vcdsdk.ComponentCPI, cpisdk.RemoveVIPFromRdeError, lb.clusterID, "")
 	if err != nil {
-		klog.Errorf("error removing CPI error [%s] from RDE: [%v]", cpisdk.RemoveVIPFromRdeError, lb.clusterID, err)
+		klog.Errorf("error removing CPI error [%s] from RDE [%s]: [%v]", cpisdk.RemoveVIPFromRdeError, lb.clusterID, err)
 	}
 
 	err = cpiRdeManager.AddToEventSetWithNameAndId(ctx, cpisdk.DeletedLoadbalancer, "", virtualServiceName, fmt.Sprintf("Successfully deleted loadbalancer associated with [%s], deleted external IP [%s]", lb.clusterID, vip))
@@ -519,10 +532,12 @@ func getUserSpecifiedLoadBalancerIP(service *v1.Service) string {
 func (lb *LBManager) createLoadBalancer(ctx context.Context, service *v1.Service,
 	nodeIPs []string) (*v1.LoadBalancerStatus, error) {
 
+	lbIpClaimMarker := lb.getLoadBalancerIpClaimMarker(ctx, service)
 	lbPoolNamePrefix := lb.getLBPoolNamePrefix(ctx, service)
 	virtualServiceNamePrefix := lb.getVirtualServicePrefix(ctx, service)
 	lbStatus, portNameToIPMap, err := lb.getLoadBalancer(ctx, service)
-	rdeManager := vcdsdk.NewRDEManager(lb.vcdClient, lb.clusterID, release.CloudControllerManagerName, release.CpiVersion)
+
+	rdeManager := vcdsdk.NewRDEManager(lb.vcdClient, lb.clusterID, release.CloudControllerManagerName, release.Version)
 	cpiRdeManager := cpisdk.NewCPIRDEManager(rdeManager)
 	if err != nil {
 		addToErrorSetErr := cpiRdeManager.AddToErrorSetWithNameAndId(ctx, cpisdk.GetLoadbalancerError, "", virtualServiceNamePrefix, err.Error())
@@ -537,7 +552,7 @@ func (lb *LBManager) createLoadBalancer(ctx context.Context, service *v1.Service
 	if removeErr != nil {
 		klog.Errorf("error adding CPI error [%s] to the RDE [%s], [%v]", cpisdk.GetLoadbalancerError, lb.clusterID, removeErr)
 	}
-	gm, err := vcdsdk.NewGatewayManager(ctx, lb.vcdClient, lb.ovdcNetworkName, lb.ipamSubnet)
+	gm, err := vcdsdk.NewGatewayManager(ctx, lb.vcdClient, lb.ovdcNetworkName, lb.ipamSubnet, lb.ovdcIdentifier)
 	if err != nil {
 		return nil, fmt.Errorf("error while creating GatewayManager: [%v]", err)
 	}
@@ -673,7 +688,7 @@ func (lb *LBManager) createLoadBalancer(ctx context.Context, service *v1.Service
 	klog.Infof("Creating loadbalancer for ports [%#v]\n", portDetailsList)
 	// Create using VCD API
 	resourcesAllocated := &util.AllocatedResourcesMap{}
-	lbIP, err := gm.CreateLoadBalancer(ctx, virtualServiceNamePrefix, lbPoolNamePrefix, nodeIPs, portDetailsList,
+	lbIP, err := gm.CreateLoadBalancer(ctx, virtualServiceNamePrefix, lbPoolNamePrefix, lbIpClaimMarker, nodeIPs, portDetailsList,
 		lb.OneArm, lb.EnableVirtualServiceSharedIP, portNameToIPMap, userSpecifiedLBIP, resourcesAllocated)
 	if rdeErr := lb.addLBResourcesToRDE(ctx, resourcesAllocated, lbIP); rdeErr != nil {
 		return nil, fmt.Errorf("unable to add load balancer pool resources to RDE [%s]: [%v]", lb.clusterID, err)
@@ -736,7 +751,8 @@ func (lb *LBManager) VerifyVCDResourcesForApplicationLB(ctx context.Context, ser
 	return lb.verifyVCDResourcesForApplicationLB(ctx, virtualServiceNamePrefix, lbPoolNamePrefix, portDetailsList, lb.OneArm)
 }
 
-/**
+/*
+*
 In GetVirtualService(), we will always expect 1 virtual service back only. This is due to virtual service names
 being unique as there cannot have two of the same virtual service names, and in GetVirtualService() we have a FIQL name==%s filter
 to search for a virtual service of %s name.
@@ -744,7 +760,7 @@ to search for a virtual service of %s name.
 func (lb *LBManager) verifyVCDResourcesForApplicationLB(ctx context.Context, virtualServiceNamePrefix string,
 	lbPoolNamePrefix string, portDetailsList []vcdsdk.PortDetails, oneArm *vcdsdk.OneArm) (bool, error) {
 
-	gatewayMgr, err := vcdsdk.NewGatewayManager(ctx, lb.vcdClient, lb.ovdcNetworkName, lb.ipamSubnet)
+	gatewayMgr, err := vcdsdk.NewGatewayManager(ctx, lb.vcdClient, lb.ovdcNetworkName, lb.ipamSubnet, lb.ovdcIdentifier)
 	if err != nil {
 		return false, fmt.Errorf("error creating new gateway manager [%v]", err)
 	}

@@ -1,29 +1,20 @@
-FROM golang:1.17 AS builder
+FROM alpine:3.18 AS builder
 
-RUN apt-get update && \
-    apt-get -y install \
-        bash \
-        git  \
-        make
+WORKDIR /build/vcloud/
 
-ADD . /go/src/github.com/vmware/cloud-provider-for-cloud-director
-WORKDIR /go/src/github.com/vmware/cloud-provider-for-cloud-director
+ARG CPI_BUILD_DIR
+ADD ${CPI_BUILD_DIR}/cloud-provider-for-cloud-director .
 
-ENV GOPATH /go
-RUN ["make", "build-within-docker"]
-
+RUN chmod +x /build/vcloud/cloud-provider-for-cloud-director
 ########################################################
-
-FROM photonos-docker-local.artifactory.eng.vmware.com/photon4:4.0-GA
+FROM scratch
 
 WORKDIR /opt/vcloud/bin
 
-COPY --from=builder /go/src/github.com/vmware/cloud-provider-for-cloud-director/LICENSE.txt .
-COPY --from=builder /go/src/github.com/vmware/cloud-provider-for-cloud-director/NOTICE.txt .
-COPY --from=builder /go/src/github.com/vmware/cloud-provider-for-cloud-director/open_source_license.txt .
+# copy multiple files at a time to create a single layer
+COPY LICENSE.txt NOTICE.txt open_source_license.txt /opt/vcloud/bin/
 COPY --from=builder /build/vcloud/cloud-provider-for-cloud-director .
+COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 
-RUN chmod +x /opt/vcloud/bin/cloud-provider-for-cloud-director
-
-USER nobody
-ENTRYPOINT ["/bin/bash", "-l", "-c"]
+USER 65534
+ENTRYPOINT ["/opt/vcloud/bin/cloud-provider-for-cloud-director"]

@@ -12,7 +12,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/vmware/cloud-provider-for-cloud-director/pkg/util"
-	swagger "github.com/vmware/cloud-provider-for-cloud-director/pkg/vcdswaggerclient"
+	swaggerClient "github.com/vmware/cloud-provider-for-cloud-director/pkg/vcdswaggerclient_37_2"
 	"gopkg.in/yaml.v2"
 	"io/ioutil"
 	"path/filepath"
@@ -46,7 +46,7 @@ func TestCacheGatewayDetails(t *testing.T) {
 
 	ctx := context.Background()
 
-	gm, err := NewGatewayManager(ctx, vcdClient, vcdConfig.OvdcNetwork, vcdConfig.VIPSubnet)
+	gm, err := NewGatewayManager(ctx, vcdClient, vcdConfig.OvdcNetwork, vcdConfig.VIPSubnet, vcdConfig.TenantVdc)
 	assert.NoError(t, err, "gateway manager should be created without error")
 
 	require.NotNil(t, gm.GatewayRef, "Gateway reference should not be nil")
@@ -54,7 +54,7 @@ func TestCacheGatewayDetails(t *testing.T) {
 	assert.NotEmpty(t, gm.GatewayRef.Id, "Gateway Id should not be empty")
 
 	// Missing network name should be reported
-	gatewayManager, err := NewGatewayManager(ctx, vcdClient, "", vcdConfig.VIPSubnet)
+	gatewayManager, err := NewGatewayManager(ctx, vcdClient, "", vcdConfig.VIPSubnet, vcdConfig.TenantVdc)
 	assert.Error(t, err, "Should get error for unknown network")
 	assert.Nil(t, gatewayManager, "gateway manager should be nil when erroring out")
 
@@ -85,7 +85,7 @@ func TestDNATRuleCRUDE(t *testing.T) {
 
 	ctx := context.Background()
 
-	gm, err := NewGatewayManager(ctx, vcdClient, vcdConfig.OvdcNetwork, vcdConfig.VIPSubnet)
+	gm, err := NewGatewayManager(ctx, vcdClient, vcdConfig.OvdcNetwork, vcdConfig.VIPSubnet, vcdConfig.TenantVdc)
 	assert.NoError(t, err, "gateway manager should be created without error")
 
 	dnatRuleName := fmt.Sprintf("test-dnat-rule-%s", uuid.New().String())
@@ -151,7 +151,7 @@ func TestLBPoolCRUDE(t *testing.T) {
 
 	ctx := context.Background()
 
-	gm, err := NewGatewayManager(ctx, vcdClient, vcdConfig.OvdcNetwork, vcdConfig.VIPSubnet)
+	gm, err := NewGatewayManager(ctx, vcdClient, vcdConfig.OvdcNetwork, vcdConfig.VIPSubnet, vcdConfig.TenantVdc)
 	assert.NoError(t, err, "gateway manager should be created without error")
 
 	lbPoolName := fmt.Sprintf("test-lb-pool-%s", uuid.New().String())
@@ -235,7 +235,7 @@ func TestGetLoadBalancerSEG(t *testing.T) {
 
 	ctx := context.Background()
 
-	gm, err := NewGatewayManager(ctx, vcdClient, vcdConfig.OvdcNetwork, vcdConfig.VIPSubnet)
+	gm, err := NewGatewayManager(ctx, vcdClient, vcdConfig.OvdcNetwork, vcdConfig.VIPSubnet, vcdConfig.TenantVdc)
 	assert.NoError(t, err, "gateway manager should be created without error")
 
 	segRef, err := gm.GetLoadBalancerSEG(ctx)
@@ -272,7 +272,7 @@ func TestGetUnusedGatewayIP(t *testing.T) {
 
 	ctx := context.Background()
 
-	gm, err := NewGatewayManager(ctx, vcdClient, vcdConfig.OvdcNetwork, vcdConfig.VIPSubnet)
+	gm, err := NewGatewayManager(ctx, vcdClient, vcdConfig.OvdcNetwork, vcdConfig.VIPSubnet, vcdConfig.TenantVdc)
 	assert.NoError(t, err, "gateway manager should be created without error")
 
 	validSubnet := vcdConfig.VIPSubnet
@@ -317,7 +317,7 @@ func TestVirtualServiceHttpCRUDE(t *testing.T) {
 
 	ctx := context.Background()
 
-	gm, err := NewGatewayManager(ctx, vcdClient, vcdConfig.OvdcNetwork, vcdConfig.VIPSubnet)
+	gm, err := NewGatewayManager(ctx, vcdClient, vcdConfig.OvdcNetwork, vcdConfig.VIPSubnet, vcdConfig.TenantVdc)
 	assert.NoError(t, err, "gateway manager should be created without error")
 
 	lbPoolName := fmt.Sprintf("test-lb-pool-%s", uuid.New().String())
@@ -329,7 +329,7 @@ func TestVirtualServiceHttpCRUDE(t *testing.T) {
 
 	virtualServiceName := fmt.Sprintf("test-virtual-service-%s", uuid.New().String())
 	internalIP := "2.3.4.5"
-	var vsRef *swagger.EntityReference
+	var vsRef *swaggerClient.EntityReference
 	for i := 0; i < BusyRetries; i++ {
 		vsRef, err = gm.CreateVirtualService(ctx, virtualServiceName, lbPoolRef, segRef,
 			internalIP, "HTTP", 80, false, "")
@@ -364,12 +364,11 @@ func TestVirtualServiceHttpCRUDE(t *testing.T) {
 	require.NotNil(t, vsRef, "VirtualServiceRef should not be nil")
 	assert.Equal(t, virtualServiceName, vsRef.Name, "Virtual Service name should match")
 
-
 	_, err = gm.UpdateVirtualService(ctx, virtualServiceName, "", 8080, true)
 	assert.NoError(t, err, "Unable to update external port")
 
 	// repeated update should not fail
-	_, err = gm.UpdateVirtualService(ctx, virtualServiceName, "",8080, true)
+	_, err = gm.UpdateVirtualService(ctx, virtualServiceName, "", 8080, true)
 	assert.NoError(t, err, "Repeated update to external port should not fail")
 
 	_, err = gm.UpdateVirtualService(ctx, virtualServiceName+"-invalid", "", 8080, true)
@@ -416,7 +415,7 @@ func TestVirtualServiceHttpsCRUDE(t *testing.T) {
 
 	ctx := context.Background()
 
-	gm, err := NewGatewayManager(ctx, vcdClient, vcdConfig.OvdcNetwork, vcdConfig.VIPSubnet)
+	gm, err := NewGatewayManager(ctx, vcdClient, vcdConfig.OvdcNetwork, vcdConfig.VIPSubnet, vcdConfig.TenantVdc)
 	assert.NoError(t, err, "gateway manager should be created without error")
 
 	lbPoolName := fmt.Sprintf("test-lb-pool-%s", uuid.New().String())
@@ -434,7 +433,7 @@ func TestVirtualServiceHttpsCRUDE(t *testing.T) {
 		certName = fmt.Sprintf("%s-cert", vcdConfig.ClusterID)
 	}
 
-	var vsRef *swagger.EntityReference
+	var vsRef *swaggerClient.EntityReference
 	for i := 0; i < BusyRetries; i++ {
 		vsRef, err = gm.CreateVirtualService(ctx, virtualServiceName, lbPoolRef, segRef,
 			internalIP, "HTTP", 80, false, "")
@@ -516,7 +515,7 @@ func TestLoadBalancerCRUDE(t *testing.T) {
 
 	ctx := context.Background()
 
-	gm, err := NewGatewayManager(ctx, vcdClient, testConfig.OvdcNetwork, testConfig.VIPSubnet)
+	gm, err := NewGatewayManager(ctx, vcdClient, testConfig.OvdcNetwork, testConfig.VIPSubnet, testConfig.TenantVdc)
 	assert.NoError(t, err, "gateway manager should be created without error")
 
 	virtualServiceNamePrefix := fmt.Sprintf("test-virtual-service-https-%s", uuid.New().String())
@@ -549,7 +548,7 @@ func TestLoadBalancerCRUDE(t *testing.T) {
 		EndIP:   "192.168.8.100",
 	}
 	freeIP, err = gm.CreateLoadBalancer(ctx, virtualServiceNamePrefix,
-		lbPoolNamePrefix, []string{"1.2.3.4", "1.2.3.5"}, portDetailsList, oneArm, false, nil, "", &util.AllocatedResourcesMap{})
+		lbPoolNamePrefix, "", []string{"1.2.3.4", "1.2.3.5"}, portDetailsList, oneArm, false, nil, "", &util.AllocatedResourcesMap{})
 	assert.NoError(t, err, "Load Balancer should be created")
 	assert.NotEmpty(t, freeIP, "There should be a non-empty IP returned")
 
@@ -568,7 +567,7 @@ func TestLoadBalancerCRUDE(t *testing.T) {
 	assert.Equal(t, freeIP, freeIPObtained, "The IPs should match")
 
 	freeIP, err = gm.CreateLoadBalancer(ctx, virtualServiceNamePrefix,
-		lbPoolNamePrefix, []string{"1.2.3.4", "1.2.3.5"}, portDetailsList, oneArm, false, nil, "", &util.AllocatedResourcesMap{})
+		lbPoolNamePrefix, "", []string{"1.2.3.4", "1.2.3.5"}, portDetailsList, oneArm, false, nil, "", &util.AllocatedResourcesMap{})
 	assert.NoError(t, err, "Load Balancer should be created even on second attempt")
 	assert.NotEmpty(t, freeIP, "There should be a non-empty IP returned")
 
@@ -598,7 +597,7 @@ func TestLoadBalancerCRUDE(t *testing.T) {
 	_, err = gm.UpdateLoadBalancer(ctx, lbPoolNamePrefix+"-https", virtualServiceNamePrefix+"-https", updatedIps, "", updatedInternalPort, updatedExternalPortHttps, nil, false, "HTTPS", &util.AllocatedResourcesMap{})
 	assert.NoError(t, err, "HTTPS Load Balancer should be updated")
 
-	_, err = gm.DeleteLoadBalancer(ctx, virtualServiceNamePrefix, lbPoolNamePrefix, portDetailsList, oneArm, &util.AllocatedResourcesMap{})
+	_, err = gm.DeleteLoadBalancer(ctx, virtualServiceNamePrefix, lbPoolNamePrefix, "", portDetailsList, oneArm, &util.AllocatedResourcesMap{})
 	assert.NoError(t, err, "Load Balancer should be deleted")
 
 	freeIPObtained, _, err = gm.GetLoadBalancer(ctx, virtualServiceNameHttp, lbPoolNameHttp, oneArm)
@@ -609,7 +608,7 @@ func TestLoadBalancerCRUDE(t *testing.T) {
 	assert.NoError(t, err, "Load Balancer should not be found")
 	assert.Empty(t, freeIPObtained, "The VIP should not be found")
 
-	_, err = gm.DeleteLoadBalancer(ctx, virtualServiceNamePrefix, lbPoolNamePrefix, portDetailsList, oneArm, &util.AllocatedResourcesMap{})
+	_, err = gm.DeleteLoadBalancer(ctx, virtualServiceNamePrefix, lbPoolNamePrefix, "", portDetailsList, oneArm, &util.AllocatedResourcesMap{})
 	assert.NoError(t, err, "Repeated deletion of Load Balancer should not fail")
 
 	_, err = gm.UpdateLoadBalancer(ctx, lbPoolNamePrefix+"-http", virtualServiceNamePrefix+"-http", updatedIps, "", updatedInternalPort, 80, nil, false, "HTTP", &util.AllocatedResourcesMap{})
@@ -646,7 +645,7 @@ func TestLoadBalancer_ExplicitLBIP_OneArmDisabled_CRUDE(t *testing.T) {
 
 	ctx := context.Background()
 
-	gm, err := NewGatewayManager(ctx, vcdClient, testConfig.OvdcNetwork, testConfig.VIPSubnet)
+	gm, err := NewGatewayManager(ctx, vcdClient, testConfig.OvdcNetwork, testConfig.VIPSubnet, testConfig.TenantVdc)
 	assert.NoError(t, err, "gateway manager should be created without error")
 
 	virtualServiceNamePrefix := fmt.Sprintf("test-virtual-service-https-%s", uuid.New().String())
@@ -676,7 +675,7 @@ func TestLoadBalancer_ExplicitLBIP_OneArmDisabled_CRUDE(t *testing.T) {
 
 	var oneArm *OneArm
 	freeIP, err = gm.CreateLoadBalancer(ctx, virtualServiceNamePrefix,
-		lbPoolNamePrefix, []string{"1.2.3.4", "1.2.3.5"}, portDetailsList, oneArm, true, nil, testConfig.FreeLoadBalancerIP, &util.AllocatedResourcesMap{})
+		lbPoolNamePrefix, "", []string{"1.2.3.4", "1.2.3.5"}, portDetailsList, oneArm, true, nil, testConfig.FreeLoadBalancerIP, &util.AllocatedResourcesMap{})
 	assert.NoError(t, err, "Load Balancer should be created")
 	assert.NotEmpty(t, freeIP, "There should be a non-empty IP returned")
 	assert.Equal(t, freeIP, testConfig.FreeLoadBalancerIP, "the provided external IP address should be the same as the load balancer IP address.")
@@ -696,7 +695,7 @@ func TestLoadBalancer_ExplicitLBIP_OneArmDisabled_CRUDE(t *testing.T) {
 	assert.Equal(t, freeIP, freeIPObtained, "The IPs should match")
 
 	freeIP, err = gm.CreateLoadBalancer(ctx, virtualServiceNamePrefix,
-		lbPoolNamePrefix, []string{"1.2.3.4", "1.2.3.5"}, portDetailsList, oneArm, true, nil, testConfig.FreeLoadBalancerIP, &util.AllocatedResourcesMap{})
+		lbPoolNamePrefix, "", []string{"1.2.3.4", "1.2.3.5"}, portDetailsList, oneArm, true, nil, testConfig.FreeLoadBalancerIP, &util.AllocatedResourcesMap{})
 	assert.NoError(t, err, "Load Balancer should be created even on second attempt")
 	assert.NotEmpty(t, freeIP, "There should be a non-empty IP returned")
 	assert.Equal(t, freeIP, testConfig.FreeLoadBalancerIP, "the provided external IP address should be the same as the load balancer IP address.")
@@ -735,7 +734,7 @@ func TestLoadBalancer_ExplicitLBIP_OneArmDisabled_CRUDE(t *testing.T) {
 	assert.NoError(t, err, "HTTP Load Balancer should be updated")
 	assert.Equal(t, lbIP, newLBIP, "updated external IP address should match the value specified")
 
-	_, err = gm.DeleteLoadBalancer(ctx, virtualServiceNamePrefix, lbPoolNamePrefix, portDetailsList, oneArm, &util.AllocatedResourcesMap{})
+	_, err = gm.DeleteLoadBalancer(ctx, virtualServiceNamePrefix, lbPoolNamePrefix, "", portDetailsList, oneArm, &util.AllocatedResourcesMap{})
 	assert.NoError(t, err, "Load Balancer should be deleted")
 
 	freeIPObtained, _, err = gm.GetLoadBalancer(ctx, virtualServiceNameHttp, lbPoolNameHttp, oneArm)
@@ -746,7 +745,7 @@ func TestLoadBalancer_ExplicitLBIP_OneArmDisabled_CRUDE(t *testing.T) {
 	assert.NoError(t, err, "Load Balancer should not be found")
 	assert.Empty(t, freeIPObtained, "The VIP should not be found")
 
-	_, err = gm.DeleteLoadBalancer(ctx, virtualServiceNamePrefix, lbPoolNamePrefix, portDetailsList, oneArm, &util.AllocatedResourcesMap{})
+	_, err = gm.DeleteLoadBalancer(ctx, virtualServiceNamePrefix, lbPoolNamePrefix, "", portDetailsList, oneArm, &util.AllocatedResourcesMap{})
 	assert.NoError(t, err, "Repeated deletion of Load Balancer should not fail")
 
 	_, err = gm.UpdateLoadBalancer(ctx, lbPoolNamePrefix+"-http", virtualServiceNamePrefix+"-http", updatedIps, testConfig.FreeLoadBalancerIP, updatedInternalPort, 80, nil, true, "HTTP", &util.AllocatedResourcesMap{})
@@ -783,7 +782,7 @@ func TestLoadBalancer_ExplicitLBIP_OneArmEnabled_CRUDE(t *testing.T) {
 
 	ctx := context.Background()
 
-	gm, err := NewGatewayManager(ctx, vcdClient, testConfig.OvdcNetwork, testConfig.VIPSubnet)
+	gm, err := NewGatewayManager(ctx, vcdClient, testConfig.OvdcNetwork, testConfig.VIPSubnet, testConfig.TenantVdc)
 	assert.NoError(t, err, "gateway manager should be created without error")
 
 	virtualServiceNamePrefix := fmt.Sprintf("test-virtual-service-https-%s", uuid.New().String())
@@ -817,7 +816,7 @@ func TestLoadBalancer_ExplicitLBIP_OneArmEnabled_CRUDE(t *testing.T) {
 	}
 
 	freeIP, err = gm.CreateLoadBalancer(ctx, virtualServiceNamePrefix,
-		lbPoolNamePrefix, []string{"1.2.3.4", "1.2.3.5"}, portDetailsList, oneArm, true, nil, testConfig.FreeLoadBalancerIP, &util.AllocatedResourcesMap{})
+		lbPoolNamePrefix, "", []string{"1.2.3.4", "1.2.3.5"}, portDetailsList, oneArm, true, nil, testConfig.FreeLoadBalancerIP, &util.AllocatedResourcesMap{})
 	assert.NoError(t, err, "Load Balancer should be created")
 	assert.NotEmpty(t, freeIP, "There should be a non-empty IP returned")
 	assert.Equal(t, freeIP, testConfig.FreeLoadBalancerIP, "the provided external IP address should be the same as the load balancer IP address.")
@@ -837,7 +836,7 @@ func TestLoadBalancer_ExplicitLBIP_OneArmEnabled_CRUDE(t *testing.T) {
 	assert.Equal(t, freeIP, freeIPObtained, "The IPs should match")
 
 	freeIP, err = gm.CreateLoadBalancer(ctx, virtualServiceNamePrefix,
-		lbPoolNamePrefix, []string{"1.2.3.4", "1.2.3.5"}, portDetailsList, oneArm, true, nil, testConfig.FreeLoadBalancerIP, &util.AllocatedResourcesMap{})
+		lbPoolNamePrefix, "", []string{"1.2.3.4", "1.2.3.5"}, portDetailsList, oneArm, true, nil, testConfig.FreeLoadBalancerIP, &util.AllocatedResourcesMap{})
 	assert.NoError(t, err, "Load Balancer should be created even on second attempt")
 	assert.NotEmpty(t, freeIP, "There should be a non-empty IP returned")
 
@@ -873,7 +872,7 @@ func TestLoadBalancer_ExplicitLBIP_OneArmEnabled_CRUDE(t *testing.T) {
 	assert.NoError(t, err, "HTTP Load Balancer should be updated")
 	assert.Equal(t, newLBIP, lbIP, "The external IP for the load balancer should be updated")
 
-	_, err = gm.DeleteLoadBalancer(ctx, virtualServiceNamePrefix, lbPoolNamePrefix, portDetailsList, oneArm, &util.AllocatedResourcesMap{})
+	_, err = gm.DeleteLoadBalancer(ctx, virtualServiceNamePrefix, lbPoolNamePrefix, "", portDetailsList, oneArm, &util.AllocatedResourcesMap{})
 	assert.NoError(t, err, "Load Balancer should be deleted")
 
 	freeIPObtained, _, err = gm.GetLoadBalancer(ctx, virtualServiceNameHttp, lbPoolNameHttp, oneArm)
@@ -884,7 +883,7 @@ func TestLoadBalancer_ExplicitLBIP_OneArmEnabled_CRUDE(t *testing.T) {
 	assert.NoError(t, err, "Load Balancer should not be found")
 	assert.Empty(t, freeIPObtained, "The VIP should not be found")
 
-	_, err = gm.DeleteLoadBalancer(ctx, virtualServiceNamePrefix, lbPoolNamePrefix, portDetailsList, oneArm, &util.AllocatedResourcesMap{})
+	_, err = gm.DeleteLoadBalancer(ctx, virtualServiceNamePrefix, lbPoolNamePrefix, "", portDetailsList, oneArm, &util.AllocatedResourcesMap{})
 	assert.NoError(t, err, "Repeated deletion of Load Balancer should not fail")
 
 	_, err = gm.UpdateLoadBalancer(ctx, lbPoolNamePrefix+"-http", virtualServiceNamePrefix+"-http", updatedIps, testConfig.FreeLoadBalancerIP, updatedInternalPort, 80, oneArm, true, "HTTP", &util.AllocatedResourcesMap{})
@@ -894,4 +893,3 @@ func TestLoadBalancer_ExplicitLBIP_OneArmEnabled_CRUDE(t *testing.T) {
 
 	return
 }
-
