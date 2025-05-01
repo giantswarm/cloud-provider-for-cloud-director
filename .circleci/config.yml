@@ -1,0 +1,37 @@
+# We are supposed to use architect-orb to build&push container images.
+# However, architect-orb has strict rules and tests. We don't have full control over this repository.
+# That is why we introduced this custom configuration in this repository.
+# Keep this file as it is while merging changes from upstream repository.
+
+version: 2.1
+
+jobs:
+  build:
+    machine:
+      image: ubuntu-2004:2024.04.4
+    steps:
+      - checkout
+      - run:
+          name: Print env vars
+          command: |
+            echo "CIRCLE_TAG=${CIRCLE_TAG}"
+      - run:
+          name : Build container
+          command: |
+            make build
+            make ccm
+      - run:
+          name: Push container
+          command: |
+            echo "$QUAY_PASSWORD" | docker login quay.io --username $QUAY_USERNAME --password-stdin
+            
+            export REGISTRY=quay.io/giantswarm
+            if ! [[ -n $CIRCLE_TAG ]]; then make push-commit; fi
+            if [[ -n $CIRCLE_TAG ]]; then make push-tag; fi
+
+workflows:
+  build-workflow:
+    jobs:
+      - build:
+          context:
+            - architect

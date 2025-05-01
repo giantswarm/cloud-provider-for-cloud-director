@@ -27,6 +27,16 @@ GOLANGCI_LINT ?= bin/golangci-lint
 GOSEC ?= bin/gosec
 SHELLCHECK ?= bin/shellcheck
 
+ccm: $(GO_CODE)
+	docker build --platform $(PLATFORM) -f Dockerfile . -t cloud-provider-for-cloud-director:$(VERSION) --build-arg CPI_BUILD_DIR=bin
+
+push-commit: 
+	docker tag cloud-provider-for-cloud-director:$(VERSION) $(REGISTRY)/cloud-provider-for-cloud-director:$(VERSION)-$(GITCOMMIT)
+	docker push $(REGISTRY)/cloud-provider-for-cloud-director:$(VERSION)-$(GITCOMMIT)
+
+push-tag:
+	docker tag cloud-provider-for-cloud-director:$(VERSION) $(REGISTRY)/cloud-provider-for-cloud-director:$(VERSION)
+	docker push $(REGISTRY)/cloud-provider-for-cloud-director:$(VERSION)
 
 .PHONY: all
 all: vendor lint dev
